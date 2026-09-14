@@ -1,0 +1,57 @@
+name: profile-cage
+
+on:
+  schedule:
+    - cron: "0 0 * * *"          # 00:00 UTC daily
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tools/gen_profile_cage.py"
+      - ".github/workflows/profile-cage.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: profile-cage
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # PROFILE_TOKEN: a classic PAT of your own account, scopes
+      # read:user + repo. Without it this job only ever sees public data:
+      #   - the calendar misses commits in private lingcage repositories
+      #   - the lingcage segment of the ledger stays at its public count
+      # With it, contributionsCollection and the PR search both include
+      # private repositories you have access to.
+      - name: Render
+        env:
+          GITHUB_TOKEN: ${{ secrets.PROFILE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          python3 tools/gen_profile_cage.py \
+            --users RuoqingHe \
+            --lingcage lingcage RuoqingHe/lingcage \
+            --auto-upstream lingcage rust-vmm kata-containers \
+                            cloud-hypervisor/cloud-hypervisor \
+            --out assets/profile-cage.svg
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/profile-cage.svg
+          if git diff --quiet --cached; then
+            echo "no change"
+          else
+            git commit -m "chore(profile): refresh capture window"
+            git push
+          fi
